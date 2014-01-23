@@ -92,8 +92,8 @@ class ScalaCompletionProposal(proposal: CompletionProposal, selectionProvider: I
    *
    *  @note It triggers the potentially expensive `getParameterNames` operation.
    */
-  def completionString(overwrite: Boolean) = {
-    if (context.contextType == CompletionContext.ImportContext || explicitParamNames.isEmpty || overwrite)
+  def completionString(overwrite: Boolean, doParamsProbablyExist: => Boolean) = {
+    if (context.contextType == CompletionContext.ImportContext || ((explicitParamNames.isEmpty || overwrite) && doParamsProbablyExist))
       completion
     else {
       val buffer = new StringBuffer(completion)
@@ -140,12 +140,47 @@ class ScalaCompletionProposal(proposal: CompletionProposal, selectionProvider: I
     val d: IDocument = viewer.getDocument()
     val overwrite = !insertCompletion ^ ((stateMask & SWT.CTRL) != 0)
 
-    val completionFullString = completionString(overwrite)
+    val tooltipsOnly = context.contextType == CompletionContext.NewContext || context.contextType == CompletionContext.ApplyContext
+
+    /**
+     * This is a heuristic that is only called when 'completion overwrite' is enabled.
+     * It checks if an expression _probably_ has already its parameter list. Without
+     * this heuristic the IDE would in cases like
+     * {{{
+     *   List(1).map^
+     * }}}
+     * not know if the parameter list should be added or not.
+     *
+     * Because this is a heuristic it will only work in some cases, but hopefully in
+     * the most important ones.
+     */
+    lazy val doParamsProbablyExist = {
+      // - inner method exists to make a return possible
+      // - lazy val necessary because the operation may be unnecessary and the
+      //   underlying document changes during completion insertion
+      def check: Boolean = {
+        def terminatesExprProbably(c: Char) =
+          c.toString matches "[a-zA-Z_;)},.\n]"
+
+        val terminationChar = Iterator
+          .from(offset)
+          // prevent BadLocationException at end of file
+          .filter(c => if (c < d.getLength()) true else return false)
+          .map(d.getChar)
+          .dropWhile(Character.isJavaIdentifierPart)
+          .dropWhile(" \t" contains _)
+          .next()
+
+        !terminatesExprProbably(terminationChar)
+      }
+      check
+    }
+
+    val completionFullString = completionString(overwrite, doParamsProbablyExist)
     val importSize = withScalaFileAndSelection { (scalaSourceFile, textSelection) =>
       var changes: List[TextChange] = Nil
 
-      // we don't have to change anything for Apply, since the full method is already specified
-      if (context.contextType != CompletionContext.ApplyContext) {
+      if (!tooltipsOnly) {
         scalaSourceFile.withSourceFile { (sourceFile, _) =>
           val endPos = if (overwrite) startPos + existingIdentifier(d, offset).getLength() else offset
           changes :+= TextChange(sourceFile, startPos, endPos, completionFullString)
@@ -163,7 +198,6 @@ class ScalaCompletionProposal(proposal: CompletionProposal, selectionProvider: I
 
       changes ++= importStmt
 
-
       // Apply the two changes in one step, if done separately we would need an
       // another `waitLoadedType` to update the positions for the refactoring
       // to work properly.
@@ -173,18 +207,19 @@ class ScalaCompletionProposal(proposal: CompletionProposal, selectionProvider: I
       importStmt.headOption.map(_.text.length)
     }
 
-    // similar to above, if we're in an apply context, we're not going to show
-    // anything in the editor (just doing tooltips)
-    if (context.contextType != CompletionContext.ApplyContext && context.contextType != CompletionContext.ImportContext) {
-      if (!overwrite) selectionProvider match {
+    def adjustCursorPosition() = EditorHelpers.doWithCurrentEditor { editor =>
+      editor.selectAndReveal(startPos + completionFullString.length() + importSize.getOrElse(0), 0)
+    }
+
+    if (!tooltipsOnly && context.contextType != CompletionContext.ImportContext) {
+      if (!overwrite || !doParamsProbablyExist) selectionProvider match {
         case viewer: ITextViewer if explicitParamNames.flatten.nonEmpty =>
           addArgumentTemplates(d, viewer, completionFullString)
-        case _ => ()
+        case _ =>
+          adjustCursorPosition()
       }
       else
-        EditorHelpers.doWithCurrentEditor { editor =>
-          editor.selectAndReveal(startPos + completionFullString.length() + importSize.getOrElse(0), 0)
-      }
+        adjustCursorPosition()
     }
   }
 

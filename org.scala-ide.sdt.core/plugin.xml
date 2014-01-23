@@ -769,6 +769,9 @@
      <initializer
            class="scala.tools.eclipse.PreferenceInitializer">
      </initializer>
+     <initializer
+           class="scala.tools.eclipse.properties.EditorPreferenceInitializer">
+     </initializer>
   </extension>
 
   <extension point="org.eclipse.core.expressions.propertyTesters">
@@ -1506,5 +1509,18 @@
          <runtimeClasspathEntry pluginId="org.eclipse.jdt.junit.runtime"/>
          <!-- END : do we need these? -->
     </kind>
+ </extension>
+ <extension
+       point="org.eclipse.ui.decorators">
+    <decorator
+          class="scala.tools.eclipse.ui.ScalaDecorator"
+          id="scala.tools.eclipse.ui.ScalaDecorator"
+          label="Scala Decorations"
+          state="true"
+          lightweight="true">
+       <description>
+          Shows Scala specific icons
+       </description>
+    </decorator>
  </extension>
 </plugin>

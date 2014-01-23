@@ -167,7 +167,7 @@ class CompletionTests {
    */
   @Test
   def ticket1000476() {
-    val oraclePos4_26 = List("ArrayList", "ArrayLister")
+    val oraclePos4_26 = List("ArrayList", "ArrayList", "ArrayLister") // ArrayList also from java.util.Arrays
     val oraclePos6_33 = List("ArrayList")
     val oraclePos11_16 = List("TreeSet")
 
@@ -294,6 +294,19 @@ class CompletionTests {
   }
 
   @Test
+  def t1001272() {
+    val oraclePos16_18 = List("A(): t1001272.A", "A(Int): t1001272.A")
+    val oraclePos17_18 = List("B(): t1001272.B")
+    val oraclePos18_20 = List("E(Int): t1001272.D.E")
+    val oraclePos19_26 = List("InnerA(Int): t1001272.Test.a.InnerA")
+
+    val unit = scalaCompilationUnit("t1001272/A.scala")
+    reload(unit)
+
+    runTest("t1001272/A.scala", false)(oraclePos16_18, oraclePos17_18, oraclePos18_20, oraclePos19_26)
+  }
+
+  @Test
   def t1001125() {
     withCompletions("t1001125/Ticket1001125.scala") {
       (index, position, completions) =>
@@ -323,4 +336,37 @@ class CompletionTests {
           }))
     }
   }
+
+  @Test
+  def t1002002() {
+    withCompletions("t1002002/A.scala") {
+      (index, position, completions) =>
+        assertEquals("There is only one completion location", 1, completions.size)
+        assertTrue("The completion should return completion", completions exists {
+            case c: CompletionProposal =>
+              assertTrue("Should need import", c.needImport)
+              assertEquals("test.A.ATestInner", c.fullyQualifiedName)
+              true
+            case a => println(s"Got: $a")
+              false
+        })
+    }
+  }
+
+  @Test
+  def t1002002_2() {
+    withCompletions("t1002002/D.scala") {
+      (index, position, completions) =>
+        assertEquals("There is only one completion location", 1, completions.size)
+        assertTrue("The completion should return completion", completions exists {
+            case c: CompletionProposal =>
+              assertTrue("Should need import", c.needImport)
+              assertEquals("test.A.C.ACTestInner", c.fullyQualifiedName)
+              true
+            case a => println(s"Got: $a")
+              false
+        })
+    }
+  }
+
 }

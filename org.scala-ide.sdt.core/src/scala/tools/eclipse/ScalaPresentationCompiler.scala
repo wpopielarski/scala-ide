@@ -7,7 +7,9 @@ package scala.tools.eclipse
 
 import scala.tools.nsc.interactive.FreshRunReq
 import scala.collection.concurrent
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.SynchronizedMap
 import org.eclipse.jdt.core.compiler.IProblem
 import org.eclipse.jdt.internal.compiler.problem.DefaultProblem
 import org.eclipse.jdt.internal.compiler.problem.ProblemSeverities
@@ -43,6 +45,7 @@ import org.eclipse.core.resources.IFile
 import org.eclipse.jdt.internal.core.util.Util
 import scala.tools.eclipse.compiler.CompilerApiExtensions
 
+
 class ScalaPresentationCompiler(project: ScalaProject, settings: Settings) extends {
   /*
    * Lock object for protecting compiler names. Names are cached in a global `Array[Char]`
@@ -77,9 +80,86 @@ class ScalaPresentationCompiler(project: ScalaProject, settings: Settings) exten
     } yield icu
   }
 
-  /** Schedule all units open handled by this presentation compiler for reconciliation.  */
-  def reconcileOpenUnits() {
+  /** Ask to reload all units managed by this presentation compiler */
+  @deprecated("use askReloadManagedUnits instead", "4.0.0")
+  def reconcileOpenUnits() = askReloadManagedUnits()
+
+  def askReloadManagedUnits() {
     askReload(compilationUnits)
+  }
+
+  /**
+   * The set of compilation units to be reloaded at the next refresh round.
+   * Refresh rounds can be triggered by the reconciler, but also interactive requests
+   * (e.g. completion)
+   */
+  private val scheduledUnits = new scala.collection.mutable.HashMap[InteractiveCompilationUnit,Array[Char]]
+
+  /**
+   * Add a compilation unit (CU) to the set of CUs to be Reloaded at the next refresh round.
+   */
+  def scheduleReload(icu : InteractiveCompilationUnit, contents:Array[Char]) : Unit = {
+    scheduledUnits.synchronized { scheduledUnits += ((icu, contents)) }
+  }
+
+  /**
+   * Reload the scheduled compilation units and reset the set of scheduled reloads.
+   *  For any CU unknown by the compiler at reload, this is a no-op.
+   */
+  def flushScheduledReloads(): Response[Unit] = {
+    val res = new Response[Unit]
+    scheduledUnits.synchronized {
+      val reloadees = scheduledUnits filter {(scu) => compilationUnits.contains(scu._1)} toList
+
+      if (reloadees.isEmpty) res.set(())
+      else {
+        val reloadFiles = reloadees map { case (s, c) => s.sourceFile(c) }
+        askReload(reloadFiles, res)
+        res.get
+      }
+      scheduledUnits.clear()
+    }
+    res
+  }
+
+  override def askFilesDeleted(sources: List[SourceFile], response: Response[Unit]) = {
+    flushScheduledReloads()
+    super.askFilesDeleted(sources, response)
+  }
+
+  override def askLinkPos(sym: Symbol, source: SourceFile, response: Response[Position]) = {
+    flushScheduledReloads()
+    super.askLinkPos(sym, source, response)
+  }
+
+  override def askParsedEntered(source: SourceFile, keepLoaded: Boolean, response: Response[Tree]) = {
+    flushScheduledReloads()
+    super.askParsedEntered(source, keepLoaded, response)
+  }
+
+  override def askScopeCompletion(pos: Position, response: Response[List[Member]]) = {
+    flushScheduledReloads()
+    super.askScopeCompletion(pos, response)
+  }
+
+  override def askToDoFirst(source: SourceFile) = {
+    flushScheduledReloads()
+    super.askToDoFirst(source)
+  }
+
+  override def askTypeAt(pos: Position, response: Response[Tree]) = {
+    flushScheduledReloads()
+    super.askTypeAt(pos, response)
+  }
+
+  override def askTypeCompletion(pos: Position, response: Response[List[Member]]) = {
+    flushScheduledReloads()
+    super.askTypeCompletion(pos, response)
+  }
+
+  override def askLoadedTyped(sourceFile: SourceFile, keepLoaded: Boolean, response: Response[Tree]) = {
+    flushScheduledReloads()
+    super.askLoadedTyped(sourceFile, keepLoaded, response)
   }
 
   def problemsOf(file: AbstractFile): List[IProblem] = {
@@ -102,19 +182,14 @@ class ScalaPresentationCompiler(project: ScalaProject, settings: Settings) exten
   def withSourceFile[T](icu: InteractiveCompilationUnit)(op: (SourceFile, ScalaPresentationCompiler) => T): T =
     icu.withSourceFile(op) getOrElse (throw new UnsupportedOperationException("Use `InteractiveCompilationUnit.withSourceFile`"))
 
-  def body(sourceFile: SourceFile): Either[Tree, Throwable] = {
-    val response = new Response[Tree]
-    if (self.onCompilerThread)
-      throw ScalaPresentationCompiler.InvalidThread("Tried to execute `askType` while inside `ask`")
-    askLoadedTyped(sourceFile, response)
-    response.get
-  }
+  @deprecated("Use loadedType instead.", "4.0.0")
+  def body(sourceFile: SourceFile, keepLoaded: Boolean = false): Either[Tree, Throwable] = loadedType(sourceFile, keepLoaded)
 
-  def loadedType(sourceFile: SourceFile): Either[Tree, Throwable] = {
+  def loadedType(sourceFile: SourceFile, keepLoaded: Boolean = false): Either[Tree, Throwable] = {
     val response = new Response[Tree]
     if (self.onCompilerThread)
       throw ScalaPresentationCompiler.InvalidThread("Tried to execute `askLoadedType` while inside `ask`")
-    askLoadedTyped(sourceFile, response)
+    askLoadedTyped(sourceFile, keepLoaded, response)
     response.get
   }
 
@@ -132,7 +207,7 @@ class ScalaPresentationCompiler(project: ScalaProject, settings: Settings) exten
   def askOption[A](op: () => A): Option[A] = askOption(op, 10000)
 
   /** Perform `op' on the compiler thread. Catch all exceptions, and return
-   *  None if an exception occured. TypeError and FreshRunReq are printed to
+   *  None if an exception occurred. TypeError and FreshRunReq are printed to
    *  stdout, all the others are logged in the platform error log.
    */
   def askOption[A](op: () => A, timeout: Int): Option[A] = {
@@ -184,7 +259,7 @@ class ScalaPresentationCompiler(project: ScalaProject, settings: Settings) exten
   /** Reload the given compilation unit. If the unit is not tracked by the presentation
    *  compiler, it will be from now on.
    */
-  def askReload(scu: ScalaCompilationUnit, content: Array[Char]): Response[Unit] = {
+  def askReload(scu: InteractiveCompilationUnit, content: Array[Char]): Response[Unit] = {
     withResponse[Unit] { res => askReload(List(scu.sourceFile(content)), res) }
   }
 
@@ -231,7 +306,7 @@ class ScalaPresentationCompiler(project: ScalaProject, settings: Settings) exten
 
     // reconcile the opened editors if some files have been refreshed
     if (notLoadedFiles.nonEmpty)
-      reconcileOpenUnits()
+      askReloadManagedUnits()
   }
 
   override def newTermName(str: String) = {
@@ -281,7 +356,13 @@ class ScalaPresentationCompiler(project: ScalaProject, settings: Settings) exten
     else if (sym.isModule) Object
     else if (sym.isType) Type
     else Val
-    val name = sym.decodedName
+
+    val name = if (sym.isConstructor)
+      sym.owner.decodedName
+    else if (sym.hasGetter)
+      (sym.getter: Symbol).decodedName
+    else sym.decodedName
+
     val signature =
       if (sym.isMethod) {
         name +
@@ -361,7 +442,8 @@ object ScalaPresentationCompiler {
       import prob._
       if (pos.isDefined) {
         val source = pos.source
-        val pos1 = pos.toSingleLine
+        val start = pos.point
+        val end = start + ScalaWordFinder.findWord(source.content, start).getLength() - 1
         val fileName =
           source.file match {
             case EclipseFile(file) =>
@@ -377,10 +459,10 @@ object ScalaPresentationCompiler {
           0,
           new Array[String](0),
           nscSeverityToEclipse(severityLevel),
-          pos1.startOrPoint,
-          math.max(pos1.startOrPoint, pos1.endOrPoint - 1),
-          pos1.line,
-          pos1.column))
+          start,
+          end,
+          pos.line,
+          pos.column))
       } else None
     }
 
