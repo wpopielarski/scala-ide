@@ -1,12 +1,17 @@
 package org.scalaide.core
 package opentype
 
-import testsetup.SDTTestUtils._
-import org.junit._
 import org.eclipse.core.runtime.Path
-import org.scalaide.core.internal.jdt.model.ScalaClassFile
-import org.eclipse.jdt.core.IClassFile
+import org.eclipse.jdt.core.IOrdinaryClassFile
+import org.junit.AfterClass
+import org.junit.Assert
+import org.junit.BeforeClass
+import org.junit.Test
 import org.scalaide.core.IScalaProject
+import org.scalaide.core.internal.jdt.model.ScalaClassFile
+
+import org.scalaide.core.testsetup.SDTTestUtils.createProjects
+import org.scalaide.core.testsetup.SDTTestUtils.deleteProjects
 
 object ScalaBinaryTypeTest {
   var prj: IScalaProject = _
@@ -42,7 +47,7 @@ class ScalaBinaryTypeTest {
   }
 
   private def testForPath(path: String): Unit = {
-    val elementsCf = prj.javaProject.findElement(new Path(path)).asInstanceOf[IClassFile]
+    val elementsCf = prj.javaProject.findElement(new Path(path)).asInstanceOf[IOrdinaryClassFile]
     Assert.assertNotNull("Couldn't find classfile " + path, elementsCf)
     val elementsClass = elementsCf.getType()
     elementsCf match {

@@ -68,7 +68,7 @@
       <version>${zinc.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.scala-ide</groupId>
+      <groupId>org.scala-sbt</groupId>
       <artifactId>zinc-compile-core_${scala.minor.version}</artifactId>
       <version>${zinc.version}</version>
     </dependency>
@@ -112,6 +112,17 @@
       <artifactId>io_${scala.minor.version}</artifactId>
       <version>${sbt-io.version}</version>
     </dependency>
+<dependency>
+    <groupId>net.java.dev.jna</groupId>
+    <artifactId>jna-platform</artifactId>
+    <version>${jna-platform.version}</version>
+</dependency>
+<dependency>
+    <groupId>net.java.dev.jna</groupId>
+    <artifactId>jna</artifactId>
+    <version>${jna-platform.version}</version>
+</dependency>
+
     <dependency>
       <groupId>org.scala-sbt</groupId>
       <artifactId>sbinary_${scala.minor.version}</artifactId>
@@ -208,11 +219,11 @@
                   <classifier>sources</classifier>
                 </artifactItem>
                 <artifactItem>
-                  <groupId>org.scala-ide</groupId>
+                  <groupId>org.scala-sbt</groupId>
                   <artifactId>zinc-compile-core_${scala.minor.version}</artifactId>
                 </artifactItem>
                 <artifactItem>
-                  <groupId>org.scala-ide</groupId>
+                  <groupId>org.scala-sbt</groupId>
                   <artifactId>zinc-compile-core_${scala.minor.version}</artifactId>
                   <classifier>sources</classifier>
                 </artifactItem>
@@ -283,6 +294,14 @@
                   <groupId>org.scala-sbt</groupId>
                   <artifactId>io_${scala.minor.version}</artifactId>
                 </artifactItem>
+<artifactItem>
+    <groupId>net.java.dev.jna</groupId>
+    <artifactId>jna-platform</artifactId>
+</artifactItem>
+<artifactItem>
+    <groupId>net.java.dev.jna</groupId>
+    <artifactId>jna</artifactId>
+</artifactItem>
                 <artifactItem>
                   <groupId>org.scala-sbt</groupId>
                   <artifactId>io_${scala.minor.version}</artifactId>

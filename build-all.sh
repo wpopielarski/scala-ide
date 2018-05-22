@@ -10,7 +10,7 @@ ROOT_DIR=${PWD}
 if [ -z "$*" ]
 then
   MVN_ARGS="-Pscala-2.12.x -Peclipse-oxygen $ADDITIONAL_MVN_OPTS clean install"
-  MVN_P2_ARGS="-Dtycho.localArtifacts=ignore -Pscala-2.12.x -Peclipse-oxygen $ADDITIONAL_MVN_OPTS clean verify"
+  MVN_P2_ARGS="-Djava.io.tmpdir=$TMP -Dtycho.localArtifacts=ignore -Pscala-2.12.x -Peclipse-oxygen $ADDITIONAL_MVN_OPTS clean verify"
 else
   MVN_ARGS="$*"
   MVN_P2_ARGS="-Dtycho.localArtifacts=ignore $*"

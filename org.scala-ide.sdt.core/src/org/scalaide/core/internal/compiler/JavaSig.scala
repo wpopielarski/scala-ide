@@ -56,12 +56,7 @@ trait JavaSig { pc: ScalaPresentationCompiler =>
     private lazy val sig: Option[String] = {
       // make sure to execute this call in the presentation compiler's thread
       pc.asyncExec {
-        def needsJavaSig: Boolean = {
-          // there is no need to generate the generic type information for local symbols
-          !symbol.isLocalToBlock && erasure.needsJavaSig(symbol.info, throwsArgs = Nil)
-        }
-
-        if (needsJavaSig) {
+        if (!symbol.isLocalToBlock) {
           // it's *really* important we ran pc.atPhase so that symbol's type is updated! (atPhase does side-effects on the type!)
           for (signature <- erasure.javaSig(symbol, pc.enteringPhase(pc.currentRun.erasurePhase)(symbol.info), markClassUsed))
             yield signature.replace("/", ".")
